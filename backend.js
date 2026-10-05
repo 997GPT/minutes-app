@@ -3,6 +3,7 @@
   const cfg = window.APP_CONFIG || {};
   const LIVE = !!(cfg.SUPABASE_URL && cfg.SUPABASE_ANON_KEY);
   const fail = (m) => { throw new Error(m); };
+  const PENDING_MSG = "حسابك بانتظار موافقة مدير النظام";
 
   const AUTH_ERRORS = [
     [/invalid login credentials/i, "الرقم الوظيفي أو كلمة المرور غير صحيحة"],
@@ -56,14 +57,16 @@
         if (!email) fail("الرقم الوظيفي أو كلمة المرور غير صحيحة");
         ok(await sb.auth.signInWithPassword({ email, password }));
         const p = await myProfile();
-        if (!p || !p.active) { await sb.auth.signOut(); fail("الحساب موقوف، راجع مدير النظام"); }
+        if (!p || !p.active) { await sb.auth.signOut(); fail(p && p.pending ? PENDING_MSG : "الحساب موقوف، راجع مدير النظام"); }
         return p;
       },
       async register(u) {
         await empFree(u.employee_no);
         const d = ok(await signUp(sb, u));
         if (!d.session) fail("تم إنشاء الحساب. يلزم تأكيد البريد الإلكتروني قبل الدخول (أو يعطّل مدير النظام خيار Confirm email في Supabase).");
-        return myProfile();
+        const p = await myProfile();
+        if (p && !p.active) { await sb.auth.signOut(); return { pending: true }; }
+        return p;
       },
       async logout() { await sb.auth.signOut(); },
       async updateProfile(p) { ok(await sb.rpc("update_my_profile", { p_name: p.name, p_phone: p.phone })); },
@@ -76,7 +79,8 @@
         const tmp = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY,
           { auth: { persistSession: false, autoRefreshToken: false, storageKey: "tmp-signup" } });
         const d = ok(await signUp(tmp, u));
-        if (u.role === "admin" && d.user) ok(await sb.from("profiles").update({ role: "admin" }).eq("id", d.user.id));
+        // المستخدم الذي ينشئه المدير يُفعَّل مباشرة دون انتظار موافقة
+        if (d.user) ok(await sb.from("profiles").update({ active: true, pending: false, role: u.role === "admin" ? "admin" : "user" }).eq("id", d.user.id));
       },
       async adminUpdateUser(id, patch) { ok(await sb.from("profiles").update(patch).eq("id", id)); },
       async adminResetPassword(id, password) { await fn({ action: "reset_password", user_id: id, password }); },
@@ -112,18 +116,24 @@
       const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("mm|" + s));
       return [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join("");
     };
+    // حساب مدير النظام الافتراضي للوضع التجريبي (الرقم الوظيفي 1). كلمة المرور محفوظة كبصمة فقط.
+    if (!get("users", []).length) {
+      set("users", [{ id: "admin-1", employee_no: "1", name: "مدير النظام", email: "admin@local", phone: "0000000",
+        role: "admin", active: true, pending: false, created_at: new Date().toISOString(), pw: "b3c084ba6db0deade852817c0242129e43f8aecb081cd1c815790e8200004e9b" }]);
+    }
     const pub = ({ pw, ...u }) => u;
     const me = () => get("users", []).find((u) => u.id === get("sid", null));
     const needAdmin = () => { const u = me(); if (!u || u.role !== "admin") fail("هذه العملية لمدير النظام فقط"); };
-    const addUser = async (u, role) => {
+    const addUser = async (u, role, byAdmin) => {
       const users = get("users", []);
       if (users.some((x) => x.employee_no === u.employee_no.trim())) fail("الرقم الوظيفي مسجل مسبقاً");
       if (users.some((x) => x.email.toLowerCase() === u.email.trim().toLowerCase())) fail("البريد الإلكتروني مسجل مسبقاً");
       const n = {
         id: uid(), employee_no: u.employee_no.trim(), name: u.name.trim(), email: u.email.trim(), phone: u.phone.trim(),
         role: users.some((x) => x.role === "admin") ? role || "user" : "admin",
-        active: true, created_at: new Date().toISOString(), pw: await hash(u.password),
+        active: byAdmin || !users.some((x) => x.role === "admin"), created_at: new Date().toISOString(), pw: await hash(u.password),
       };
+      n.pending = !n.active;
       set("users", [...users, n]);
       return n;
     };
@@ -137,17 +147,22 @@
       async login(emp, password) {
         const u = get("users", []).find((x) => x.employee_no === emp.trim());
         if (!u || u.pw !== (await hash(password))) fail("الرقم الوظيفي أو كلمة المرور غير صحيحة");
-        if (!u.active) fail("الحساب موقوف، راجع مدير النظام");
+        if (!u.active) fail(u.pending ? PENDING_MSG : "الحساب موقوف، راجع مدير النظام");
         set("sid", u.id);
         return pub(u);
       },
-      async register(u) { const n = await addUser(u); set("sid", n.id); return pub(n); },
+      async register(u) {
+        const n = await addUser(u);
+        if (!n.active) return { pending: true };
+        set("sid", n.id);
+        return pub(n);
+      },
       async logout() { localStorage.removeItem("mm_sid"); },
       async updateProfile(p) { patchUser(me().id, { name: p.name, phone: p.phone }); },
       async changePassword(pw) { patchUser(me().id, { pw: await hash(pw) }); },
 
       async listUsers() { needAdmin(); return get("users", []).map(pub); },
-      async adminCreateUser(u) { needAdmin(); await addUser(u, u.role); },
+      async adminCreateUser(u) { needAdmin(); await addUser(u, u.role, true); },
       async adminUpdateUser(id, patch) { needAdmin(); patchUser(id, patch); },
       async adminResetPassword(id, pw) { needAdmin(); patchUser(id, { pw: await hash(pw) }); },
       async adminDeleteUser(id) {

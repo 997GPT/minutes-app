@@ -13,7 +13,7 @@
   const FONTS = ["Cairo", "Tajawal", "Almarai", "IBM Plex Sans Arabic", "Noto Kufi Arabic", "Noto Naskh Arabic", "Amiri", "Changa", "El Messiri", "Readex Pro"];
   const STATUSES = ["منجزة", "قيد التنفيذ", "لم تنفذ", "مؤجلة"];
 
-  const S = { st: DEFAULTS, me: null, view: "list", auth: "login", M: null, tab: "users", list: [] };
+  const S = { st: DEFAULTS, me: null, view: "list", auth: "login", M: null, tab: "users", list: [], pending: 0, notice: "" };
   const today = () => new Date().toLocaleDateString("en-CA");
   const ic = (k) => `<i class="ico">${esc(S.st.icons[k] || "")}</i>`;
   const isAdmin = () => S.me && S.me.role === "admin";
@@ -76,7 +76,7 @@
   function render() {
     applyTheme(S.st);
     if (!S.me) return renderAuth();
-    const nav = [["list", "list", "المحاضر"], ["new", "add", "محضر جديد"], ...(isAdmin() ? [["admin", "admin", "الإدارة"]] : []), ["profile", "profile", S.me.name.split(" ")[0]], ["logout", "logout", "خروج"]];
+    const nav = [["list", "list", "المحاضر"], ["new", "add", "محضر جديد"], ...(isAdmin() ? [["admin", "admin", "الإدارة" + (S.pending ? ` (${S.pending})` : "")]] : []), ["profile", "profile", S.me.name.split(" ")[0]], ["logout", "logout", "خروج"]];
     const cur = S.view === "edit" || S.view === "preview" ? "" : S.view;
     app.innerHTML = `
       <header class="topbar">
@@ -95,7 +95,8 @@
     app.innerHTML = `${demoBar()}<main><div class="card auth">
       <div class="logo">${S.st.logo ? `<img src="${S.st.logo}" alt="">` : ic("app")}</div>
       <h1>${esc(S.st.systemName)}</h1>
-      <p class="muted" style="text-align:center">${reg ? "إنشاء حساب مستخدم جديد" : "تسجيل الدخول"}</p>
+      <p class="muted" style="text-align:center">${reg ? "إنشاء حساب مستخدم جديد — يُفعَّل الحساب بعد موافقة مدير النظام" : "تسجيل الدخول"}</p>
+      ${S.notice && !reg ? `<div class="notice">${esc(S.notice)}</div>` : ""}
       <form data-form="${reg ? "register" : "login"}">
         ${reg ? userFields(false) : `
           <div class="field"><label>الرقم الوظيفي</label><input name="employee_no" required autocomplete="username" autofocus></div>
@@ -104,7 +105,9 @@
       </form>
       <p style="text-align:center;margin:.9rem 0 0">
         ${reg ? `لديك حساب؟ <button class="link" data-act="auth-login">تسجيل الدخول</button>` : `مستخدم جديد؟ <button class="link" data-act="auth-register">إنشاء حساب</button>`}
-      </p></div></main>`;
+      </p>
+      ${B.mode === "demo" ? `<p style="text-align:center;margin:.6rem 0 0"><button class="link muted" data-act="reset">تصفير النظام (حذف كل البيانات التجريبية)</button></p>` : ""}
+      </div></main>`;
   }
 
   // ---------------------------------------------------------------- قائمة المحاضر
@@ -290,16 +293,21 @@
   async function tabUsers(el) {
     el.innerHTML = `<div class="card"><h3><span>${ic("users")} المستخدمون</span><button class="btn" data-act="u-add">${ic("add")} مستخدم جديد</button></h3><div id="users" class="scroll"><p class="muted">جاري التحميل…</p></div></div>`;
     await run(null, async () => {
-      S.users = await B.listUsers();
+      S.users = (await B.listUsers()).sort((a, b) => (b.pending ? 1 : 0) - (a.pending ? 1 : 0));
+      const n = S.users.filter((u) => u.pending).length;
+      if (n !== S.pending) { S.pending = n; return render(); }
       $("#users").innerHTML = `<table class="list-table"><thead><tr><th>الرقم الوظيفي</th><th>الاسم</th><th>البريد</th><th>رقم التواصل</th><th>الصلاحية</th><th>الحالة</th><th></th></tr></thead><tbody>
         ${S.users.map((u) => `<tr><td>${esc(u.employee_no)}</td><td><b>${esc(u.name)}</b></td><td dir="ltr">${esc(u.email)}</td><td dir="ltr">${esc(u.phone)}</td>
           <td><span class="badge ${u.role === "admin" ? "adm" : ""}">${u.role === "admin" ? "مدير نظام" : "مستخدم"}</span></td>
-          <td><span class="badge ${u.active ? "ok" : "off"}">${u.active ? "مفعّل" : "موقوف"}</span></td>
+          <td><span class="badge ${u.active ? "ok" : u.pending ? "wait" : "off"}">${u.active ? "مفعّل" : u.pending ? "بانتظار الموافقة" : "موقوف"}</span></td>
           <td><div class="row" style="justify-content:flex-end">
             <button class="btn sm ghost" data-act="u-edit" data-id="${u.id}">تعديل</button>
             <button class="btn sm soft" data-act="u-pw" data-id="${u.id}">كلمة المرور</button>
-            ${u.id !== S.me.id ? `<button class="btn sm soft" data-act="u-toggle" data-id="${u.id}">${u.active ? "إيقاف" : "تفعيل"}</button>
-            <button class="btn sm danger" data-act="u-del" data-id="${u.id}">حذف</button>` : ""}</div></td></tr>`).join("")}</tbody></table>`;
+            ${u.id === S.me.id ? "" : u.pending
+              ? `<button class="btn sm" data-act="u-toggle" data-id="${u.id}">موافقة</button>
+            <button class="btn sm danger" data-act="u-del" data-id="${u.id}">رفض</button>`
+              : `<button class="btn sm soft" data-act="u-toggle" data-id="${u.id}">${u.active ? "إيقاف" : "تفعيل"}</button>
+            <button class="btn sm danger" data-act="u-del" data-id="${u.id}">حذف</button>`}</div></td></tr>`).join("")}</tbody></table>`;
     });
   }
 
@@ -387,10 +395,16 @@
 
   // ---------------------------------------------------------------- الأحداث
   const FORMS = {
-    async login(d) { S.me = await B.login(d.employee_no, d.password); S.view = "list"; render(); },
+    async login(d) { S.me = await B.login(d.employee_no, d.password); S.notice = ""; S.view = "list"; render(); refreshPending(); },
     async register(d) {
       if (d.password !== d.password2) throw new Error("كلمتا المرور غير متطابقتين");
-      S.me = await B.register(d); S.view = "list"; render();
+      const r = await B.register(d);
+      if (r && r.pending) {
+        S.auth = "login";
+        S.notice = "تم استلام طلب التسجيل. سيتمكن حسابك من الدخول بعد موافقة مدير النظام.";
+        return render();
+      }
+      S.me = r; S.view = "list"; render();
       toast("تم إنشاء الحساب، أهلاً بك");
     },
     async theme(d, form) { S.st = readTheme(form); await B.saveSettings(S.st); render(); toast("تم حفظ المظهر"); },
@@ -421,10 +435,19 @@
     }
   });
 
+  // عدد طلبات التسجيل التي تنتظر موافقة المدير (يظهر بجانب «الإدارة»)
+  async function refreshPending() {
+    if (!isAdmin()) return;
+    try {
+      const n = (await B.listUsers()).filter((u) => u.pending).length;
+      if (n !== S.pending) { S.pending = n; if (S.view !== "edit") render(); }
+    } catch (e) { console.error(e); }
+  }
   const go = (v) => { S.view = v; render(); window.scrollTo(0, 0); };
   const byId = (id) => S.list.find((m) => m.id === id);
   const user = (id) => S.users.find((u) => u.id === id);
   const ACTS = {
+    reset: () => { if (confirm("سيُحذف جميع المستخدمين والمحاضر والإعدادات المحفوظة على هذا المتصفح، ويعود النظام إلى حالته الأولى. متابعة؟")) B.reset(); },
     "auth-login": () => { S.auth = "login"; render(); },
     "auth-register": () => { S.auth = "register"; render(); },
     "go-list": () => go("list"),
@@ -488,11 +511,15 @@
     },
     "u-pw": (b) => modal("كلمة مرور جديدة: " + esc(user(b.dataset.id).name), `<label>كلمة المرور الجديدة</label><input name="password" type="password" required minlength="6" autocomplete="new-password">`,
       async (d) => { await B.adminResetPassword(b.dataset.id, d.password); toast("تم تغيير كلمة المرور"); }),
-    "u-toggle": async (b) => { const u = user(b.dataset.id); await B.adminUpdateUser(u.id, { active: !u.active }); toast(u.active ? "تم إيقاف الحساب" : "تم تفعيل الحساب"); render(); },
+    "u-toggle": async (b) => {
+      const u = user(b.dataset.id);
+      await B.adminUpdateUser(u.id, { active: !u.active, pending: false });
+      toast(u.pending ? "تمت الموافقة على المستخدم" : u.active ? "تم إيقاف الحساب" : "تم تفعيل الحساب"); render();
+    },
     "u-del": async (b) => {
       const u = user(b.dataset.id);
-      if (!confirm(`حذف المستخدم «${u.name}» وجميع محاضره نهائياً؟`)) return;
-      await B.adminDeleteUser(u.id); toast("تم حذف المستخدم"); render();
+      if (!confirm(u.pending ? `رفض طلب «${u.name}» وحذفه؟` : `حذف المستخدم «${u.name}» وجميع محاضره نهائياً؟`)) return;
+      await B.adminDeleteUser(u.id); toast(u.pending ? "تم رفض الطلب" : "تم حذف المستخدم"); render();
     },
   };
   app.addEventListener("click", (e) => {
@@ -514,5 +541,6 @@
       return;
     }
     render();
+    refreshPending();
   })();
 })();
