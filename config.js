@@ -5,6 +5,6 @@
 //  (البيانات تحفظ على هذا المتصفح فقط، ولا يوجد ذكاء اصطناعي حقيقي).
 // ============================================================
 window.APP_CONFIG = {
-  SUPABASE_URL: "",       // مثال: "https://abcdxyz.supabase.co"
-  SUPABASE_ANON_KEY: "",  // المفتاح العام (anon / publishable) — آمن للنشر
+  SUPABASE_URL: "https://vkzqpsoxhsgsvpaamjgz.supabase.co",       // مثال: "https://abcdxyz.supabase.co"
+  SUPABASE_ANON_KEY: "sb_publishable_Ffzp-16auXp8iNFzt14Qnw_TBmoO9EB",  // المفتاح العام (anon / publishable) — آمن للنشر
 };

@@ -20,8 +20,9 @@ create table if not exists public.settings (
   id   int primary key default 1 check (id = 1),
   data jsonb not null default '{}'::jsonb
 );
--- طلبات التسجيل الجديدة تبقى معلّقة حتى يوافق عليها مدير النظام
+-- عمود قديم من نسخة سابقة (الموافقة على التسجيل أُلغيت)؛ يبقى للتوافق فقط
 alter table public.profiles add column if not exists pending boolean not null default false;
+update public.profiles set active = true, pending = false where pending;
 
 insert into public.settings (id, data) values (1, '{}'::jsonb) on conflict (id) do nothing;
 
@@ -72,8 +73,7 @@ end;
 $$;
 
 -- إنشاء الملف الشخصي تلقائياً عند تسجيل مستخدم جديد.
--- أول مستخدم يسجل في النظام يصبح مدير النظام ويُفعَّل مباشرة،
--- وكل من يسجل بعده يبقى بانتظار موافقة مدير النظام.
+-- أول مستخدم يسجل في النظام يصبح مدير النظام، وكل مستخدم يُفعَّل مباشرة دون موافقة.
 create or replace function public.handle_new_user() returns trigger
 language plpgsql security definer set search_path = public as $$
 declare
@@ -87,7 +87,7 @@ begin
   end if;
   insert into public.profiles (id, employee_no, name, email, phone, role, active, pending)
   values (new.id, v_emp, v_name, new.email, v_phone,
-          case when v_first then 'admin' else 'user' end, v_first, not v_first);
+          case when v_first then 'admin' else 'user' end, true, false);
   return new;
 end;
 $$;

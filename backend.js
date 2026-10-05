@@ -116,11 +116,21 @@
       const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("mm|" + s));
       return [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join("");
     };
-    // حساب مدير النظام الافتراضي للوضع التجريبي (الرقم الوظيفي 1). كلمة المرور محفوظة كبصمة فقط.
-    if (!get("users", []).length) {
-      set("users", [{ id: "admin-1", employee_no: "1", name: "مدير النظام", email: "admin@local", phone: "0000000",
-        role: "admin", active: true, pending: false, created_at: new Date().toISOString(), pw: "b3c084ba6db0deade852817c0242129e43f8aecb081cd1c815790e8200004e9b" }]);
+    // بيانات الوضع التجريبي محفوظة على هذا المتصفح فقط
+    const wipe = () => Object.keys(localStorage).filter((k) => k.startsWith("mm_")).forEach((k) => localStorage.removeItem(k));
+    const DATA_VER = "3";
+    // حساب مدير النظام الافتراضي (الرقم الوظيفي 1). كلمة المرور محفوظة كبصمة فقط.
+    const seedAdmin = () => ({ id: "admin-1", employee_no: "1", name: "مدير النظام", email: "admin@local", phone: "0000000",
+      role: "admin", active: true, pending: false, created_at: new Date().toISOString(), pw: "b3c084ba6db0deade852817c0242129e43f8aecb081cd1c815790e8200004e9b" });
+    if (localStorage.getItem("mm_ver") !== DATA_VER) {
+      // ترقية لمرة واحدة: حذف جميع المستخدمين عدا مدير النظام (الرقم الوظيفي 1) مع محاضرهم
+      const admin = get("users", []).find((u) => u.employee_no === "1" && u.role === "admin") || seedAdmin();
+      set("users", [{ ...admin, active: true, pending: false }]);
+      set("minutes", get("minutes", []).filter((m) => m.owner === admin.id));
+      if (get("sid", null) !== admin.id) localStorage.removeItem("mm_sid");
+      localStorage.setItem("mm_ver", DATA_VER);
     }
+    if (!get("users", []).length) set("users", [seedAdmin()]);
     const pub = ({ pw, ...u }) => u;
     const me = () => get("users", []).find((u) => u.id === get("sid", null));
     const needAdmin = () => { const u = me(); if (!u || u.role !== "admin") fail("هذه العملية لمدير النظام فقط"); };
@@ -131,7 +141,7 @@
       const n = {
         id: uid(), employee_no: u.employee_no.trim(), name: u.name.trim(), email: u.email.trim(), phone: u.phone.trim(),
         role: users.some((x) => x.role === "admin") ? role || "user" : "admin",
-        active: byAdmin || !users.some((x) => x.role === "admin"), created_at: new Date().toISOString(), pw: await hash(u.password),
+        active: true, created_at: new Date().toISOString(), pw: await hash(u.password),
       };
       n.pending = !n.active;
       set("users", [...users, n]);
@@ -141,6 +151,7 @@
 
     return {
       mode: "demo",
+      reset() { wipe(); localStorage.setItem("mm_ver", DATA_VER); location.reload(); },
       async getSettings() { return get("settings", {}); },
       async saveSettings(d) { needAdmin(); set("settings", d); },
       async session() { const u = me(); return u && u.active ? pub(u) : null; },

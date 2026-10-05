@@ -5,8 +5,8 @@
   const app = $("#app");
 
   const DEFAULTS = {
-    systemName: "نظام محاضر الاجتماعات", orgName: "", logo: "",
-    primary: "#0f766e", bg: "#f4f6f8", text: "#1f2937", font: "Cairo", fontSize: 16,
+    systemName: "محضر اجتماع", orgName: "", logo: "",
+    primary: "#36648b", bg: "#f4f6f8", text: "#1f2937", font: "Cairo", fontSize: 16,
     icons: { app: "📝", list: "📋", add: "➕", admin: "⚙️", users: "👥", theme: "🎨", ai: "🤖", profile: "👤", logout: "🚪", word: "📘", pdf: "📕", print: "🖨️", save: "💾", mic: "🎤" },
   };
   const ICON_LABELS = { app: "شعار النظام", list: "المحاضر", add: "محضر جديد", admin: "الإدارة", users: "المستخدمون", theme: "المظهر", ai: "الذكاء الاصطناعي", profile: "حسابي", logout: "خروج", word: "تصدير Word", pdf: "تصدير PDF", print: "طباعة", save: "حفظ", mic: "الإملاء الصوتي" };
@@ -95,7 +95,7 @@
     app.innerHTML = `${demoBar()}<main><div class="card auth">
       <div class="logo">${S.st.logo ? `<img src="${S.st.logo}" alt="">` : ic("app")}</div>
       <h1>${esc(S.st.systemName)}</h1>
-      <p class="muted" style="text-align:center">${reg ? "إنشاء حساب مستخدم جديد — يُفعَّل الحساب بعد موافقة مدير النظام" : "تسجيل الدخول"}</p>
+      <p class="muted" style="text-align:center">${reg ? "إنشاء حساب مستخدم جديد" : "تسجيل الدخول"}</p>
       ${S.notice && !reg ? `<div class="notice">${esc(S.notice)}</div>` : ""}
       <form data-form="${reg ? "register" : "login"}">
         ${reg ? userFields(false) : `

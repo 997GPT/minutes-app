@@ -150,7 +150,7 @@
     const D = window.docx;
     const c = clean(m);
     const FONT = "Arial";
-    const color = (st.primary || "#0f766e").replace("#", "");
+    const color = (st.primary || "#36648b").replace("#", "");
     const W = 9638; // عرض المحتوى (A4 بهوامش 2 سم)
     const run = (text, o = {}) => new D.TextRun({ text: String(text ?? ""), rightToLeft: true, font: FONT, size: 24, ...o });
     const P = (text, o = {}, po = {}) => new D.Paragraph({ bidirectional: true, spacing: { after: 120, line: 340 }, ...po, children: [run(text, o)] });
@@ -233,7 +233,7 @@
     body.push(new D.Paragraph({ bidirectional: true, children: [run("التوقيع: ", { bold: true }), sig || run("........................................")] }));
 
     const doc = new D.Document({
-      creator: st.systemName || "نظام محاضر الاجتماعات",
+      creator: st.systemName || "محضر اجتماع",
       title: fileName(m),
       styles: { default: { document: { run: { font: FONT, size: 24 } } } },
       sections: [{
